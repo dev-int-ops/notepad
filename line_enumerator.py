@@ -7,6 +7,7 @@ class LineEnumerator(tk.Canvas):
     https://stackoverflow.com/a/16375233
     """
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault('bg', '#1e1e1e')
         tk.Canvas.__init__(self, *args, **kwargs)
         self.textwidget = None
 
@@ -25,7 +26,8 @@ class LineEnumerator(tk.Canvas):
                 if dline is None: break
                 y = dline[1]
                 line_num = str(i).split(".")[0]
-                self.create_text(31,y,anchor="ne", text=line_num)
+                self.create_text(31,y,anchor="ne", text=line_num, 
+                                 font=("Consolas", 11), fill="#858585")
                 i = self.textwidget.index("%s+1line" % i)
             except Exception as e:
                 raise e

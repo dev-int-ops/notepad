@@ -1,7 +1,8 @@
 import tkinter as tk
+from tkinter import ttk
 
 
-class AutoScrollbar(tk.Scrollbar):
+class AutoScrollbar(ttk.Scrollbar):
     """Create a scrollbar that hides iteself if it's not needed. Only
     works if you use the pack geometry manager from tkinter.
 
@@ -11,11 +12,11 @@ class AutoScrollbar(tk.Scrollbar):
         if float(low) <= 0.0 and float(high) >= 1.0:
             self.pack_forget()
         else:
-            if self.cget("orient") == tk.HORIZONTAL:
+            if str(self.cget("orient")) == tk.HORIZONTAL:
                 self.pack(fill=tk.X, side=tk.BOTTOM)
             else:
                 self.pack(fill=tk.Y, side=tk.RIGHT)
-        tk.Scrollbar.set(self, low, high)
+        ttk.Scrollbar.set(self, low, high)
     def grid(self, **kw):
         raise tk.TclError("cannot use grid with this widget")
     def place(self, **kw):
