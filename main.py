@@ -14,57 +14,56 @@ from pygments.lexers import PythonLexer
 
 
 class Notepad:
-    root = tk.Tk()
-    
-    Width = 800
-    Height = 600
-
-    text_area = TextWidget(root, undo=True, wrap='none')
-    menu_bar = tk.Menu(root)
-    file_menu = tk.Menu(menu_bar, tearoff=0)
-    edit_menu = tk.Menu(menu_bar, tearoff=0)
-    customize_menu = tk.Menu(menu_bar, tearoff=0)
-    vertical_marker_menu = tk.Menu(customize_menu, tearoff=0)
-    line_bar_menu = tk.Menu(customize_menu, tearoff=0)
-    statusbar_menu = tk.Menu(customize_menu, tearoff=0)
-    theme_edit = tk.Menu(customize_menu, tearoff=0)
-    s_bars_menu = tk.Menu(customize_menu, tearoff=0)
-    help_menu = tk.Menu(menu_bar, tearoff=0)
-    popup_menu = tk.Menu(root, tearoff=0)
-    word_wrap_menu = tk.Menu(customize_menu, tearoff=0)
-
-    search_box_label = tk.Label(text_area, highlightthickness=0,
-        bg='white')
-
-    scrollbar_y = AutoScrollbar(text_area, orient='vertical')
-    scrollbar_x = AutoScrollbar(text_area, orient='horizontal')
-
-    filename = ''
-    filename_var = ''
-    file_options = [('All Files', '*.*'), ('Python Files', '*.py'),
-                ('Text Document', '*.self.text_area')]
-    
-    tab_width = 4
-    
-    variable_marker = tk.IntVar()
-    variable_theme = tk.IntVar()
-    variable_line_bar = tk.IntVar()
-    variable_statusbar = tk.IntVar()
-    variable_hide_menu = tk.BooleanVar()
-    variable_statusbar_hide = tk.BooleanVar()
-    variable_line_bar_hide = tk.BooleanVar()
-    variable_search_box = tk.BooleanVar()
-    variable_syntax_highligh = tk.BooleanVar()
-    variable_word_wrap = tk.BooleanVar()
-    
-    canvas_line = tk.Canvas(text_area, width=1, height=Height,
-            highlightthickness=0, bg='lightsteelblue3')
-            
-    statusbar = tk.Label(root, text=f"",
-        relief=tk.FLAT, anchor='e', highlightthickness=0)
-    line_count_bar = LineEnumerator(width=32, highlightthickness=0)
-
     def __init__(self):
+        self.root = tk.Tk()
+        
+        self.Width = 800
+        self.Height = 600
+
+        self.text_area = TextWidget(self.root, undo=True, wrap='none')
+        self.menu_bar = tk.Menu(self.root)
+        self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.edit_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.customize_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.vertical_marker_menu = tk.Menu(self.customize_menu, tearoff=0)
+        self.line_bar_menu = tk.Menu(self.customize_menu, tearoff=0)
+        self.statusbar_menu = tk.Menu(self.customize_menu, tearoff=0)
+        self.theme_edit = tk.Menu(self.customize_menu, tearoff=0)
+        self.s_bars_menu = tk.Menu(self.customize_menu, tearoff=0)
+        self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.popup_menu = tk.Menu(self.root, tearoff=0)
+        self.word_wrap_menu = tk.Menu(self.customize_menu, tearoff=0)
+
+        self.search_box_label = tk.Label(self.text_area, highlightthickness=0,
+            bg='white')
+
+        self.scrollbar_y = AutoScrollbar(self.text_area, orient='vertical')
+        self.scrollbar_x = AutoScrollbar(self.text_area, orient='horizontal')
+
+        self.filename = ''
+        self.filename_var = ''
+        self.file_options = [('All Files', '*.*'), ('Python Files', '*.py'),
+                    ('Text Document', '*.txt')]
+        
+        self.tab_width = 4
+        
+        self.variable_marker = tk.IntVar()
+        self.variable_theme = tk.IntVar()
+        self.variable_line_bar = tk.IntVar()
+        self.variable_statusbar = tk.IntVar()
+        self.variable_hide_menu = tk.BooleanVar()
+        self.variable_statusbar_hide = tk.BooleanVar()
+        self.variable_line_bar_hide = tk.BooleanVar()
+        self.variable_search_box = tk.BooleanVar()
+        self.variable_syntax_highligh = tk.BooleanVar()
+        self.variable_word_wrap = tk.BooleanVar()
+        
+        self.canvas_line = tk.Canvas(self.text_area, width=1, height=self.Height,
+                highlightthickness=0, bg='lightsteelblue3')
+                
+        self.statusbar = tk.Label(self.root, text=f"",
+            relief=tk.FLAT, anchor='e', highlightthickness=0)
+        self.line_count_bar = LineEnumerator(width=32, highlightthickness=0)
         
         self.os_platform = sys.platform
         
@@ -409,10 +408,10 @@ class Notepad:
             self.filename = tkFileDialog.askopenfilename(
                 defaultextension=".txt", filetypes=self.file_options)
             if self.filename is not None:
-                with open(self.filename, 'r') as data:
-                    self.root.title(os.path.basename(self.filename))
-                    self.text_area.delete(0.0, tk.END)
-                    self.text_area.insert(0.0, data.read())
+                with open(self.filename, 'r', encoding='utf-8') as data:
+                        self.root.title(os.path.basename(self.filename))
+                        self.text_area.delete(0.0, tk.END)
+                        self.text_area.insert(0.0, data.read())
         except FileNotFoundError:
             return None
 
@@ -429,16 +428,16 @@ class Notepad:
             if self.filename == '':
                 self.filename = self.filename_var
             else:
-                with open(self.filename, 'w') as data:
-                    data.write(self.text_area.get(1.0, tk.END))
-                    self.root.title(os.path.basename(self.filename))
+                with open(self.filename, 'w', encoding='utf-8') as data:
+                        data.write(self.text_area.get(1.0, tk.END))
+                        self.root.title(os.path.basename(self.filename))
         except Exception as e:
             raise e
                 
     def save_file(self, event=None):
         """AutoSave file if it was opened else "Save as"."""
         if self.filename != None and self.filename != "":
-            with open(self.filename, 'w') as note:
+            with open(self.filename, 'w', encoding='utf-8') as note:
                     note.write(self.text_area.get(1.0, tk.END))
             self.root.title(os.path.basename(self.filename))
         elif self.filename == None or self.filename =='':
@@ -679,36 +678,14 @@ class Notepad:
         text_content = self.text_area.get("1.0", tk.END)
         lines = text_content.split("\n")
 
-        self.text_area.tag_configure("Token.Literal.String.Single",
-            foreground="green")
-        self.text_area.tag_configure("Token.Literal.String.Double",
-            foreground="green")
-        self.text_area.tag_configure("Token.Literal.Number.Integer",
-            foreground="tomato")
-        self.text_area.tag_configure("Token.Literal.Number.Float",
-            foreground="tomato")
-        self.text_area.tag_configure("Token.Name.Builtin",
-            foreground="light salmon")
-        self.text_area.tag_configure("Token.Name.Namespace",
-            foreground="forest green")
-        self.text_area.tag_configure("Token.Operator",
-            foreground="light sea green")
-        self.text_area.tag_configure("Token.Punctuation",
-            foreground="SlateBlue2")
-        self.text_area.tag_configure("Token.Keyword.Namespace",
-            foreground="dark olive green")
-        self.text_area.tag_configure("Token.Comment.Single",
-            foreground="grey")
-        self.text_area.tag_configure("Token.Comment.Hashbang",
-            foreground="grey")
-        # self.text_area.tag_configure("Token.Literal.String.Doc",
-        #     foreground="grey")
-        # self.text_area.tag_configure("Token.Keyword",
-        #     foreground="brown")
-        # self.text_area.tag_configure("Token.Text", foreground="black")
-
         if (self.previous_content != text_content):
             self.text_area.mark_set("range_start", row + ".0")
+            
+            # Remove old syntax tags from the current line before updating
+            for tag in self.text_area.tag_names():
+                if tag.startswith("Token."):
+                    self.text_area.tag_remove(tag, row + ".0", row + ".end")
+
             data = self.text_area.get(
                 row + ".0", row + "." +\
                 str(len(lines[int(row) - 1])))
@@ -729,19 +706,44 @@ class Notepad:
         if self.variable_syntax_highligh.get() == True:
             self.text_area.bind("<KeyRelease>", self.syntax_highlight)
 
+            self.text_area.tag_configure("Token.Literal.String.Single",
+                foreground="green")
+            self.text_area.tag_configure("Token.Literal.String.Double",
+                foreground="green")
+            self.text_area.tag_configure("Token.Literal.Number.Integer",
+                foreground="tomato")
+            self.text_area.tag_configure("Token.Literal.Number.Float",
+                foreground="tomato")
+            self.text_area.tag_configure("Token.Name.Builtin",
+                foreground="light salmon")
+            self.text_area.tag_configure("Token.Name.Namespace",
+                foreground="forest green")
+            self.text_area.tag_configure("Token.Operator",
+                foreground="light sea green")
+            self.text_area.tag_configure("Token.Punctuation",
+                foreground="SlateBlue2")
+            self.text_area.tag_configure("Token.Keyword.Namespace",
+                foreground="dark olive green")
+            self.text_area.tag_configure("Token.Comment.Single",
+                foreground="grey")
+            self.text_area.tag_configure("Token.Comment.Hashbang",
+                foreground="grey")
+            self.text_area.tag_configure("Token.Keyword",
+                foreground="brown")
+
             self.text_area.mark_set("range_start", "1.0")
             data = self.text_area.get("1.0", "end-1c")
             self.syntax_colorizer(data)
 
         elif self.variable_syntax_highligh.get() == False:
-            self.text_area.unbind("<KeyRelease>",
-            self.text_area.bind("<KeyRelease>", self.syntax_highlight))
+            self.text_area.unbind("<KeyRelease>")
             self.text_area.tag_delete(
                 "Token.Literal.String.Single", "Token.Literal.String.Double",
                 "Token.Literal.Number.Integer", "Token.Literal.Number.Float",
                 "Token.Name.Builtin", "Token.Name.Namespace", "Token.Operator",
                 "Token.Punctuation", "Token.Comment.Hashbang",
-                "Token.Keyword.Namespace", "Token.Comment.Single")
+                "Token.Keyword.Namespace", "Token.Comment.Single",
+                "Token.Keyword")
         else:
             return None
 
@@ -769,6 +771,3 @@ class Notepad:
 if __name__ == '__main__':
     notepad = Notepad()
     notepad.run()
-
-
-
