@@ -1,0 +1,38 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Compiled source / Build directories
+build/
+dist/
+bin/
+obj/
+out/
+*.exe
+*.dll
+*.o
+*.class
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+
+# Node.js / Web
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Environment variables & Logs
+.env
+.env.local
+*.log

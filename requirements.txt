@@ -1,0 +1,2 @@
+# Syntax highlighting library
+Pygments>=2.15.0
