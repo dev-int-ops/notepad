@@ -8,9 +8,12 @@ from scrollbar import AutoScrollbar
 
 import os
 import sys
+import sv_ttk
+from tkinter import ttk
 
 from pygments import lex
-from pygments.lexers import PythonLexer
+from pygments.lexers import get_lexer_by_name
+from pygments.util import ClassNotFound
 
 
 class Notepad:
@@ -20,7 +23,7 @@ class Notepad:
         self.Width = 800
         self.Height = 600
 
-        self.text_area = TextWidget(self.root, undo=True, wrap='none')
+        self.text_area = TextWidget(self.root, undo=True, wrap='none', font=("Consolas", 11), bg="#1e1e1e", fg="#d4d4d4", insertbackground="white")
         self.menu_bar = tk.Menu(self.root)
         self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.edit_menu = tk.Menu(self.menu_bar, tearoff=0)
@@ -33,9 +36,9 @@ class Notepad:
         self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.popup_menu = tk.Menu(self.root, tearoff=0)
         self.word_wrap_menu = tk.Menu(self.customize_menu, tearoff=0)
+        self.syntax_menu = tk.Menu(self.customize_menu, tearoff=0)
 
-        self.search_box_label = tk.Label(self.text_area, highlightthickness=0,
-            bg='white')
+        self.search_box_label = ttk.Frame(self.text_area)
 
         self.scrollbar_y = AutoScrollbar(self.text_area, orient='vertical')
         self.scrollbar_x = AutoScrollbar(self.text_area, orient='horizontal')
@@ -55,14 +58,14 @@ class Notepad:
         self.variable_statusbar_hide = tk.BooleanVar()
         self.variable_line_bar_hide = tk.BooleanVar()
         self.variable_search_box = tk.BooleanVar()
-        self.variable_syntax_highligh = tk.BooleanVar()
+        self.variable_syntax_highlight = tk.StringVar(value="None")
         self.variable_word_wrap = tk.BooleanVar()
         
         self.canvas_line = tk.Canvas(self.text_area, width=1, height=self.Height,
                 highlightthickness=0, bg='lightsteelblue3')
                 
-        self.statusbar = tk.Label(self.root, text=f"",
-            relief=tk.FLAT, anchor='e', highlightthickness=0)
+        self.statusbar = tk.Label(self.root, text=f"", font=("Consolas", 9),
+            relief=tk.FLAT, anchor='e', highlightthickness=0, bg="#007acc", fg="white")
         self.line_count_bar = LineEnumerator(width=32, highlightthickness=0)
         
         self.os_platform = sys.platform
@@ -85,6 +88,9 @@ class Notepad:
         self.root.grid_columnconfigure(1, weight=1)
         # Make textarea size as window
         self.text_area.grid(column=1, row=0, sticky='nsew')
+        
+        # Apply modern theme
+        sv_ttk.set_theme("dark")
         
         # Configure Yscrollbar
         self.text_area.configure(yscrollcommand=self.scrollbar_y.set)
@@ -143,9 +149,13 @@ class Notepad:
             menu=self.s_bars_menu)
         self.customize_menu.add_cascade(label="Word wrap",
             menu=self.word_wrap_menu)
-        self.customize_menu.add_checkbutton(label="Highlight syntax",
-            onvalue=1, offvalue=0, variable=self.variable_syntax_highligh,
-            command=self.switch_syntax_highlight)
+        self.customize_menu.add_cascade(label="Highlight syntax",
+            menu=self.syntax_menu)
+
+        # Syntax highlight menu
+        for lang in ["None", "Python", "JSON", "CSV", "Bash", "PowerShell", "YAML"]:
+            self.syntax_menu.add_radiobutton(label=lang, variable=self.variable_syntax_highlight,
+                value=lang, command=self.switch_syntax_highlight)
 
         # Word wrap menu
         self.word_wrap_menu.add_checkbutton(label="Turn On",
@@ -195,21 +205,21 @@ class Notepad:
             variable=self.variable_marker, command=self.vertical_line)
 
         # Nested Theme menu
-        self.theme_edit.add_checkbutton(label="Azure", onvalue=1,
+        self.theme_edit.add_checkbutton(label="Default Dark", onvalue=0, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Aquamarine", onvalue=2,
+        self.theme_edit.add_checkbutton(label="Default Light", onvalue=1, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Black", onvalue=3, offvalue=0,
+        self.theme_edit.add_checkbutton(label="Monokai", onvalue=2, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Deep Sky blue", onvalue=4,
+        self.theme_edit.add_checkbutton(label="Solarized Dark", onvalue=3, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Midnight blue", onvalue=5,
+        self.theme_edit.add_checkbutton(label="Solarized Light", onvalue=4, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Dark Slate Gray", onvalue=6,
+        self.theme_edit.add_checkbutton(label="Dracula", onvalue=5, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Cyber Dark", onvalue=7,
+        self.theme_edit.add_checkbutton(label="Nord", onvalue=6, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
-        self.theme_edit.add_checkbutton(label="Gray-Gold", onvalue=8,
+        self.theme_edit.add_checkbutton(label="GitHub Dark", onvalue=7, offvalue=0,
             variable=self.variable_theme, command=self.theme_activate)
         
         # Help menu
@@ -247,28 +257,25 @@ class Notepad:
         self.text_area.bind('<Configure>', self.vertical_line)
 
         # Search box
-        self.search_entry = tk.Entry(self.search_box_label, bg='light cyan',
-            bd=4, width=29, justify=tk.CENTER)
-        self.search_entry.grid(column=1, row=0, columnspan=1)
-        self.search_button = tk.Button(self.search_box_label, text='Find all',
-            bd=1, command=self.find_match, cursor='arrow')
-        self.search_button.grid(column=0, row=0, columnspan=1)
-        self.find_next = tk.Button(self.search_box_label, text='Next', 
-            bd=1, command=self.next_match, cursor='arrow')
-        self.find_next.grid(column=2, row=0, columnspan=1)
+        self.search_entry = ttk.Entry(self.search_box_label, width=29, justify=tk.CENTER)
+        self.search_entry.grid(column=1, row=0, padx=2, pady=2, columnspan=1)
+        self.search_button = ttk.Button(self.search_box_label, text='Find all',
+            command=self.find_match, cursor='arrow')
+        self.search_button.grid(column=0, row=0, padx=2, pady=2, columnspan=1)
+        self.find_next = ttk.Button(self.search_box_label, text='Next', 
+            command=self.next_match, cursor='arrow')
+        self.find_next.grid(column=2, row=0, padx=2, pady=2, columnspan=1)
 
-        self.replace_with_label = tk.Label(self.search_box_label, bd=4,
-            text='Replace with:')
-        self.replace_with_label.grid(column=3, row=0, columnspan=1)
-        self.replace_match_entry = tk.Entry(self.search_box_label, bg='gold', bd=4,
-            width=29, justify=tk.CENTER)
-        self.replace_match_entry.grid(column=4, row=0, columnspan=1)
-        self.repace_match_button = tk.Button(self.search_box_label, bd=1,
-            text='Replace', command=self.replace_match, cursor='arrow')
-        self.repace_match_button.grid(column=5, row=0, columnspan=1)
+        self.replace_with_label = ttk.Label(self.search_box_label, text='Replace with:')
+        self.replace_with_label.grid(column=3, row=0, padx=2, pady=2, columnspan=1)
+        self.replace_match_entry = ttk.Entry(self.search_box_label, width=29, justify=tk.CENTER)
+        self.replace_match_entry.grid(column=4, row=0, padx=2, pady=2, columnspan=1)
+        self.repace_match_button = ttk.Button(self.search_box_label, text='Replace',
+            command=self.replace_match, cursor='arrow')
+        self.repace_match_button.grid(column=5, row=0, padx=2, pady=2, columnspan=1)
 
         self.dpi_awareness()
-        self.previous_content = self.text_area.get("1.0", tk.END)
+        self._highlight_timer = None
         
     def shift_tab_bind(self):
         if self.os_platform == "win32":
@@ -281,13 +288,10 @@ class Notepad:
     def search_box(self, event=None):
         """Make Search box appear inside text area"""
         if self.variable_search_box.get() == True:
-            # self.search_box_label.place_forget()
             self.search_box_label.pack_forget()
             self.variable_search_box.set(False)
             self.search_entry.unbind('<Return>')
         elif self.variable_search_box.get() == False:
-            # self.search_box_label.place(bordermode=tk.INSIDE,
-            #     width=self.Width/3, relx=1.0, rely=0.0, anchor='ne')
             self.search_box_label.pack(side=tk.TOP, anchor=tk.NE)
             self.variable_search_box.set(True)
             self.search_entry.focus_set()
@@ -370,22 +374,7 @@ class Notepad:
 
     def seach_box_background(self):
         """Change search box background"""
-        if  self.variable_theme.get() == 1:
-            self.search_box_label.config(bg='azure')
-        elif  self.variable_theme.get() == 2:
-            self.search_box_label.config(bg='aquamarine')
-        elif  self.variable_theme.get() == 3:
-            self.search_box_label.config(bg='black')
-        elif  self.variable_theme.get() == 4:
-            self.search_box_label.config(bg='deepskyblue4')
-        elif  self.variable_theme.get() == 5:
-            self.search_box_label.config(bg='midnight blue')
-        elif  self.variable_theme.get() == 6:
-            self.search_box_label.config(bg='dark slate gray')
-        elif  self.variable_theme.get() == 7:
-            self.search_box_label.config(bg='#1f1f2e')
-        elif  self.variable_theme.get() == 8:
-            self.search_box_label.config(bg='gray17')
+        pass # Managed by sv_ttk theme now
 
     def popup(self, event):
         """
@@ -498,36 +487,33 @@ class Notepad:
     def theme_activate(self):
         """Change background, font color, icursor color"""
         self.seach_box_background()
+        
+        # Map themes to: (Text BG, Text FG, Cursor Color, sv_ttk Theme)
+        theme_map = {
+            0: ('#1e1e1e', '#d4d4d4', 'white', 'dark'),      # Default Dark
+            1: ('#ffffff', '#000000', 'black', 'light'),     # Default Light
+            2: ('#272822', '#f8f8f2', 'white', 'dark'),      # Monokai
+            3: ('#002b36', '#839496', 'white', 'dark'),      # Solarized Dark
+            4: ('#fdf6e3', '#657b83', 'black', 'light'),     # Solarized Light
+            5: ('#282a36', '#f8f8f2', 'white', 'dark'),      # Dracula
+            6: ('#2e3440', '#d8dee9', 'white', 'dark'),      # Nord
+            7: ('#0d1117', '#c9d1d9', 'white', 'dark')       # GitHub Dark
+        }
 
-        if self.variable_theme.get() == 0:
-            self.text_area.config(bg='white', fg='black',
-                insertbackground='black')
-        elif self.variable_theme.get() == 1:
-            self.text_area.config(bg='azure', fg='black',
-                insertbackground='black')
-        elif self.variable_theme.get() == 2:
-            self.text_area.config(bg='aquamarine', fg='black',
-                insertbackground='black')
-        elif self.variable_theme.get() == 3:
-            self.text_area.config(bg='black', fg='white',
-                insertbackground='white')
-        elif self.variable_theme.get() == 4:
-            self.text_area.config(bg='deepskyblue4', fg='light cyan',
-                insertbackground='white')
-        elif self.variable_theme.get() == 5:
-            self.text_area.config(bg='midnight blue', fg='white',
-                insertbackground='white')
-        elif self.variable_theme.get() == 6:
-            self.text_area.config(bg='dark slate gray', fg='linen',
-                insertbackground='white')
-        elif self.variable_theme.get() == 7:
-            self.text_area.config(bg='#1f1f2e', fg='cyan',
-                insertbackground='white')
-        elif self.variable_theme.get() == 8:
-            self.text_area.config(bg='gray17', fg='gold',
-                insertbackground='white')
-        else:
-            return 'Error'
+        val = self.variable_theme.get()
+        if val in theme_map:
+            bg, fg, insert, sv_theme = theme_map[val]
+            self.text_area.config(bg=bg, fg=fg, insertbackground=insert)
+            sv_ttk.set_theme(sv_theme)
+            
+            # Sync the default side bar and status bar colors to match the new overall theme
+            if self.variable_line_bar.get() == 0:
+                self.line_count_bar.config(bg=bg)
+            if self.variable_statusbar.get() == 0:
+                self.statusbar.config(bg="#007acc" if sv_theme == "dark" else "#005999", fg="white")
+                
+            # Refresh syntax highlighting colors based on new theme
+            self.switch_syntax_highlight()
        
     def vertical_line(self, event=None):
         """Inseert or remove vertical marker"""
@@ -547,7 +533,8 @@ class Notepad:
         Show line, col and symb inside statusbar.
         """
         line, col = self.text_area.index("insert").split(".")
-        symb = str(len(self.text_area.get(1.0, 'end-1c')))
+        symb_count = self.text_area.count(1.0, "end-1c", "chars")
+        symb = str(symb_count[0]) if symb_count else "0"
         self.statusbar.config(
             text=f"Line: {line} | Col: {col} | Symbols: {symb}")
         
@@ -565,7 +552,7 @@ class Notepad:
     def line_bar_color(self, event=None):
         """Change color of line-count bar"""
         if self.variable_line_bar.get() == 0:
-            self.line_count_bar.config(bg='SystemButtonFace')
+            self.line_count_bar.config(bg=self.text_area.cget('bg'))
         elif self.variable_line_bar.get() == 1:
             self.line_count_bar.config(bg='lightsteelblue3')
         elif self.variable_line_bar.get() == 2:
@@ -580,15 +567,16 @@ class Notepad:
     def statusbar_color(self, event=None):
         """Change color of bottom status bar"""
         if self.variable_statusbar.get() == 0:
-            self.statusbar.config(bg='SystemButtonFace')
+            is_dark = sv_ttk.get_theme() == "dark"
+            self.statusbar.config(bg="#007acc" if is_dark else "#005999", fg="white")
         elif self.variable_statusbar.get() == 1:
-            self.statusbar.config(bg='lightsteelblue3')
+            self.statusbar.config(bg='lightsteelblue3', fg='black')
         elif self.variable_statusbar.get() == 2:
-            self.statusbar.config(bg='yellow')
+            self.statusbar.config(bg='yellow', fg='black')
         elif self.variable_statusbar.get() == 3:
-            self.statusbar.config(bg='dodger blue')
+            self.statusbar.config(bg='dodger blue', fg='white')
         elif self.variable_statusbar.get() == 4:
-            self.statusbar.config(bg='Indian red')
+            self.statusbar.config(bg='Indian red', fg='white')
         else:
             return "Error"
 
@@ -674,76 +662,93 @@ class Notepad:
         Source: https://stackoverflow.com/a/32064481,
         https://www.holadevs.com/pregunta/100576/python-pygments-tkinter
         """
+        if self._highlight_timer:
+            self.root.after_cancel(self._highlight_timer)
+        # Debounce the highlighter to prevent UI blocking
+        self._highlight_timer = self.root.after(50, self._apply_syntax_highlight)
+
+    def _apply_syntax_highlight(self):
         row = self.text_area.index("insert").split(".")[0]
-        text_content = self.text_area.get("1.0", tk.END)
-        lines = text_content.split("\n")
 
-        if (self.previous_content != text_content):
-            self.text_area.mark_set("range_start", row + ".0")
-            
-            # Remove old syntax tags from the current line before updating
-            for tag in self.text_area.tag_names():
-                if tag.startswith("Token."):
-                    self.text_area.tag_remove(tag, row + ".0", row + ".end")
+        # Remove old syntax tags from the current line before updating
+        for tag in self.text_area.tag_names():
+            if tag.startswith("Token."):
+                self.text_area.tag_remove(tag, row + ".0", row + ".end")
 
-            data = self.text_area.get(
-                row + ".0", row + "." +\
-                str(len(lines[int(row) - 1])))
-
-            self.syntax_colorizer(data)
-
-        self.previous_content = self.text_area.get("1.0", tk.END)
+        data = self.text_area.get(row + ".0", row + ".end")
+        self.text_area.mark_set("range_start", row + ".0")
+        self.syntax_colorizer(data)
 
     def switch_syntax_highlight(self):
         """
         Bind syntax_highlight function to "<KeyRelease>" event, 
-        if check_button is pressed on.
+        if radio button is not "None".
         If text widget is not empty - colorize it.
 
-        If check_button switched off - remove Key binding and delete tags.
+        If radio button is "None" - remove Key binding and delete tags.
         
         """
-        if self.variable_syntax_highligh.get() == True:
+        if self.variable_syntax_highlight.get() != "None":
             self.text_area.bind("<KeyRelease>", self.syntax_highlight)
 
-            self.text_area.tag_configure("Token.Literal.String.Single",
-                foreground="green")
-            self.text_area.tag_configure("Token.Literal.String.Double",
-                foreground="green")
-            self.text_area.tag_configure("Token.Literal.Number.Integer",
-                foreground="tomato")
-            self.text_area.tag_configure("Token.Literal.Number.Float",
-                foreground="tomato")
-            self.text_area.tag_configure("Token.Name.Builtin",
-                foreground="light salmon")
-            self.text_area.tag_configure("Token.Name.Namespace",
-                foreground="forest green")
-            self.text_area.tag_configure("Token.Operator",
-                foreground="light sea green")
-            self.text_area.tag_configure("Token.Punctuation",
-                foreground="SlateBlue2")
-            self.text_area.tag_configure("Token.Keyword.Namespace",
-                foreground="dark olive green")
-            self.text_area.tag_configure("Token.Comment.Single",
-                foreground="grey")
-            self.text_area.tag_configure("Token.Comment.Hashbang",
-                foreground="grey")
-            self.text_area.tag_configure("Token.Keyword",
-                foreground="brown")
+            is_dark = sv_ttk.get_theme() == "dark"
+            
+            if is_dark:
+                # Modern VS Code Dark Theme syntax colors
+                self.text_area.tag_configure("Token.Literal.String.Single", foreground="#ce9178")
+                self.text_area.tag_configure("Token.Literal.String.Double", foreground="#ce9178")
+                self.text_area.tag_configure("Token.Literal.String", foreground="#ce9178")
+                self.text_area.tag_configure("Token.Literal.Number.Integer", foreground="#b5cea8")
+                self.text_area.tag_configure("Token.Literal.Number.Float", foreground="#b5cea8")
+                self.text_area.tag_configure("Token.Literal.Number", foreground="#b5cea8")
+                self.text_area.tag_configure("Token.Name.Builtin", foreground="#4ec9b0")
+                self.text_area.tag_configure("Token.Name.Namespace", foreground="#4ec9b0")
+                self.text_area.tag_configure("Token.Name.Tag", foreground="#569cd6")
+                self.text_area.tag_configure("Token.Name.Attribute", foreground="#9cdcfe")
+                self.text_area.tag_configure("Token.Name.Variable", foreground="#9cdcfe")
+                self.text_area.tag_configure("Token.Operator", foreground="#d4d4d4")
+                self.text_area.tag_configure("Token.Punctuation", foreground="#d4d4d4")
+                self.text_area.tag_configure("Token.Keyword.Namespace", foreground="#c586c0")
+                self.text_area.tag_configure("Token.Comment.Single", foreground="#6a9955")
+                self.text_area.tag_configure("Token.Comment.Hashbang", foreground="#6a9955")
+                self.text_area.tag_configure("Token.Comment", foreground="#6a9955")
+                self.text_area.tag_configure("Token.Keyword", foreground="#569cd6")
+                self.text_area.tag_configure("Token.Generic.Heading", foreground="#569cd6")
+            else:
+                # Modern VS Code Light Theme syntax colors
+                self.text_area.tag_configure("Token.Literal.String.Single", foreground="#a31515")
+                self.text_area.tag_configure("Token.Literal.String.Double", foreground="#a31515")
+                self.text_area.tag_configure("Token.Literal.String", foreground="#a31515")
+                self.text_area.tag_configure("Token.Literal.Number.Integer", foreground="#098658")
+                self.text_area.tag_configure("Token.Literal.Number.Float", foreground="#098658")
+                self.text_area.tag_configure("Token.Literal.Number", foreground="#098658")
+                self.text_area.tag_configure("Token.Name.Builtin", foreground="#267f99")
+                self.text_area.tag_configure("Token.Name.Namespace", foreground="#267f99")
+                self.text_area.tag_configure("Token.Name.Tag", foreground="#0000ff")
+                self.text_area.tag_configure("Token.Name.Attribute", foreground="#001080")
+                self.text_area.tag_configure("Token.Name.Variable", foreground="#001080")
+                self.text_area.tag_configure("Token.Operator", foreground="#000000")
+                self.text_area.tag_configure("Token.Punctuation", foreground="#000000")
+                self.text_area.tag_configure("Token.Keyword.Namespace", foreground="#af00db")
+                self.text_area.tag_configure("Token.Comment.Single", foreground="#008000")
+                self.text_area.tag_configure("Token.Comment.Hashbang", foreground="#008000")
+                self.text_area.tag_configure("Token.Comment", foreground="#008000")
+                self.text_area.tag_configure("Token.Keyword", foreground="#0000ff")
+                self.text_area.tag_configure("Token.Generic.Heading", foreground="#0000ff")
+
+            for tag in self.text_area.tag_names():
+                if tag.startswith("Token."):
+                    self.text_area.tag_remove(tag, "1.0", tk.END)
 
             self.text_area.mark_set("range_start", "1.0")
             data = self.text_area.get("1.0", "end-1c")
             self.syntax_colorizer(data)
 
-        elif self.variable_syntax_highligh.get() == False:
+        elif self.variable_syntax_highlight.get() == "None":
             self.text_area.unbind("<KeyRelease>")
-            self.text_area.tag_delete(
-                "Token.Literal.String.Single", "Token.Literal.String.Double",
-                "Token.Literal.Number.Integer", "Token.Literal.Number.Float",
-                "Token.Name.Builtin", "Token.Name.Namespace", "Token.Operator",
-                "Token.Punctuation", "Token.Comment.Hashbang",
-                "Token.Keyword.Namespace", "Token.Comment.Single",
-                "Token.Keyword")
+            for tag in self.text_area.tag_names():
+                if tag.startswith("Token."):
+                    self.text_area.tag_delete(tag)
         else:
             return None
 
@@ -755,7 +760,16 @@ class Notepad:
             "data" arg. - content to which range applied 
             e.g. data = text_widget.get("1.0", "end-1c").
         """
-        for token, content in lex(data, PythonLexer()):
+        lang = self.variable_syntax_highlight.get()
+        try:
+            lexer = get_lexer_by_name(lang.lower())
+        except ClassNotFound:
+            try:
+                lexer = get_lexer_by_name("text")
+            except ClassNotFound:
+                return
+
+        for token, content in lex(data, lexer):
             self.text_area.mark_set(
                 "range_end", "range_start + %dc" % len(content))
             self.text_area.tag_add(str(token), "range_start", "range_end")
