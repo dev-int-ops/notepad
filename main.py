@@ -276,6 +276,7 @@ class Notepad:
 
         self.dpi_awareness()
         self._highlight_timer = None
+        self._incremental_timer = None
         
     def shift_tab_bind(self):
         if self.os_platform == "win32":
@@ -391,16 +392,20 @@ class Notepad:
         self.root.title(self.filename)
         self.filename = ''
         self.text_area.delete(0.0, tk.END)
+        if self.variable_syntax_highlight.get() != "None":
+            self.switch_syntax_highlight()
         
     def open_file(self, event=None):
         try:
             self.filename = tkFileDialog.askopenfilename(
                 defaultextension=".txt", filetypes=self.file_options)
-            if self.filename is not None:
+            if self.filename:
                 with open(self.filename, 'r', encoding='utf-8') as data:
                         self.root.title(os.path.basename(self.filename))
                         self.text_area.delete(0.0, tk.END)
                         self.text_area.insert(0.0, data.read())
+                        if self.variable_syntax_highlight.get() != "None":
+                            self.switch_syntax_highlight()
         except FileNotFoundError:
             return None
 
@@ -676,8 +681,7 @@ class Notepad:
                 self.text_area.tag_remove(tag, row + ".0", row + ".end")
 
         data = self.text_area.get(row + ".0", row + ".end")
-        self.text_area.mark_set("range_start", row + ".0")
-        self.syntax_colorizer(data)
+        self.syntax_colorizer(data, row + ".0")
 
     def switch_syntax_highlight(self):
         """
@@ -742,7 +746,7 @@ class Notepad:
 
             self.text_area.mark_set("range_start", "1.0")
             data = self.text_area.get("1.0", "end-1c")
-            self.syntax_colorizer(data)
+            self.syntax_colorizer(data, "1.0")
 
         elif self.variable_syntax_highlight.get() == "None":
             self.text_area.unbind("<KeyRelease>")
@@ -752,7 +756,7 @@ class Notepad:
         else:
             return None
 
-    def syntax_colorizer(self, data):
+    def syntax_colorizer(self, data, start_index):
         """
         Colorize market text.
         Must be provided: 
@@ -769,11 +773,20 @@ class Notepad:
             except ClassNotFound:
                 return
 
+        row, col = map(int, start_index.split('.'))
+
         for token, content in lex(data, lexer):
-            self.text_area.mark_set(
-                "range_end", "range_start + %dc" % len(content))
-            self.text_area.tag_add(str(token), "range_start", "range_end")
-            self.text_area.mark_set("range_start", "range_end")
+            lines = content.split('\n')
+            if len(lines) == 1:
+                end_row = row
+                end_col = col + len(lines[0])
+            else:
+                end_row = row + len(lines) - 1
+                end_col = len(lines[-1])
+
+            end_index = f"{end_row}.{end_col}"
+            self.text_area.tag_add(str(token), f"{row}.{col}", end_index)
+            row, col = end_row, end_col
 
 
     def word_wrap(self):
