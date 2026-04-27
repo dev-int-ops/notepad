@@ -23,7 +23,9 @@ class Notepad:
         self.Width = 800
         self.Height = 600
 
-        self.text_area = TextWidget(self.root, undo=True, wrap='none', font=("Consolas", 11), bg="#1e1e1e", fg="#d4d4d4", insertbackground="white")
+        self.notebook = ttk.Notebook(self.root)
+        self.tabs = {}
+
         self.menu_bar = tk.Menu(self.root)
         self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.edit_menu = tk.Menu(self.menu_bar, tearoff=0)
@@ -38,13 +40,8 @@ class Notepad:
         self.word_wrap_menu = tk.Menu(self.customize_menu, tearoff=0)
         self.syntax_menu = tk.Menu(self.customize_menu, tearoff=0)
 
-        self.search_box_label = ttk.Frame(self.text_area)
+        self.search_box_label = ttk.Frame(self.root)
 
-        self.scrollbar_y = AutoScrollbar(self.text_area, orient='vertical')
-        self.scrollbar_x = AutoScrollbar(self.text_area, orient='horizontal')
-
-        self.filename = ''
-        self.filename_var = ''
         self.file_options = [('All Files', '*.*'), ('Python Files', '*.py'),
                     ('Text Document', '*.txt')]
         
@@ -61,12 +58,8 @@ class Notepad:
         self.variable_syntax_highlight = tk.StringVar(value="None")
         self.variable_word_wrap = tk.BooleanVar()
         
-        self.canvas_line = tk.Canvas(self.text_area, width=1, height=self.Height,
-                highlightthickness=0, bg='lightsteelblue3')
-                
         self.statusbar = tk.Label(self.root, text=f"", font=("Consolas", 9),
             relief=tk.FLAT, anchor='e', highlightthickness=0, bg="#007acc", fg="white")
-        self.line_count_bar = LineEnumerator(width=32, highlightthickness=0)
         
         self.os_platform = sys.platform
         
@@ -82,25 +75,18 @@ class Notepad:
         # For top and bottom
         self.root.geometry('%dx%d+%d+%d' % (self.Width, self.Height,
             left, top))
+        self.root.protocol("WM_DELETE_WINDOW", self.quit_app)
 
-        # Make the textarea auto resizable
+        # Make the notebook auto resizable
         self.root.grid_rowconfigure(0, weight=1) 
-        self.root.grid_columnconfigure(1, weight=1)
-        # Make textarea size as window
-        self.text_area.grid(column=1, row=0, sticky='nsew')
+        self.root.grid_columnconfigure(0, weight=1)
+        self.notebook.grid(column=0, columnspan=3, row=0, sticky='nsew')
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
+        self.notebook.bind("<FocusIn>", self.on_notebook_focus)
         
         # Apply modern theme
         sv_ttk.set_theme("dark")
         
-        # Configure Yscrollbar
-        self.text_area.configure(yscrollcommand=self.scrollbar_y.set)
-        self.scrollbar_y.config(command=self.text_area.yview,
-            cursor="sb_v_double_arrow")
-        # Configure Xscrollbar
-        self.text_area.configure(xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_x.config(command=self.text_area.xview,
-            cursor="sb_h_double_arrow")
-
         ## Menu GUI
         self.root.config(menu=self.menu_bar)
         self.menu_bar.add_cascade(label='File', menu=self.file_menu)
@@ -117,6 +103,8 @@ class Notepad:
             command=self.save_file)
         self.file_menu.add_command(label='Save as ...',
             accelerator='Ctrl+Alt+S', command=self.save_file_as)
+        self.file_menu.add_command(label='Close Tab',
+            accelerator='Ctrl+W', command=self.close_tab)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.quit_app)
         
@@ -239,22 +227,13 @@ class Notepad:
         self.popup_menu.add_command(label='Hide menu',
             command=self.hide_menu, accelerator='Ctrl+H')
 
-        # Button bind
-        self.text_area.bind('<Tab>', self.tab)
-        self.shift_tab_bind()
-        self.text_area.bind('<ButtonRelease-3>', self.popup)
-        self.text_area.bind('<Control-r>', self.redo)
-        self.text_area.bind('<Control-z>', self.undo)
-        self.text_area.bind('<Control-a>', self.select_all)
-        self.text_area.bind('<Control-s>', self.save_file)
-        self.text_area.bind('<Control-Alt-s>', self.save_file_as)
-        self.text_area.bind('<Control-n>', self.new_file)
-        self.text_area.bind('<Control-o>', self.open_file)
-        self.text_area.bind('<Control-h>', self.hide_menu)
+        self.root.bind('<Control-s>', self.save_file)
+        self.root.bind('<Control-Alt-s>', self.save_file_as)
+        self.root.bind('<Control-n>', self.new_file)
+        self.root.bind('<Control-o>', self.open_file)
+        self.root.bind('<Control-w>', self.close_tab)
+        self.root.bind('<Control-h>', self.hide_menu)
         self.root.bind('<Control-f>', self.search_box)
-
-        # Vertical line auto resize
-        self.text_area.bind('<Configure>', self.vertical_line)
 
         # Search box
         self.search_entry = ttk.Entry(self.search_box_label, width=29, justify=tk.CENTER)
@@ -277,23 +256,208 @@ class Notepad:
         self.dpi_awareness()
         self._highlight_timer = None
         self._incremental_timer = None
-        
-    def shift_tab_bind(self):
-        if self.os_platform == "win32":
-            self.text_area.bind('<Shift-Tab>', self.shift_tab)
-        elif self.os_platform == "linux":
-            self.text_area.bind('<Shift-ISO_Left_Tab>', self.shift_tab)
-        else:
+
+        self.create_tab()
+
+    @property
+    def current_tab_id(self):
+        try:
+            selected = self.notebook.select()
+            return str(selected) if selected else None
+        except tk.TclError:
             return None
+
+    @property
+    def current_tab(self):
+        tab_id = self.current_tab_id
+        return self.tabs.get(tab_id) if tab_id else None
+
+    @property
+    def text_area(self):
+        tab = self.current_tab
+        return tab['text_area'] if tab else None
+
+    @property
+    def filename(self):
+        tab = self.current_tab
+        return tab['filename'] if tab else ""
+
+    @filename.setter
+    def filename(self, value):
+        tab = self.current_tab
+        if tab:
+            tab['filename'] = value
+            self.update_tab_title(self.current_tab_id)
+
+    @property
+    def line_count_bar(self):
+        tab = self.current_tab
+        return tab['line_count_bar'] if tab else None
+
+    @property
+    def canvas_line(self):
+        tab = self.current_tab
+        return tab['canvas_line'] if tab else None
+
+    def update_tab_title(self, tab_id):
+        tab = self.tabs.get(tab_id)
+        if not tab: return
+        
+        filename = tab['filename']
+        is_modified = tab.get('is_modified', False)
+        
+        title = os.path.basename(filename) if filename else "Untitled"
+        if is_modified:
+            title += " *"
+            
+        self.notebook.tab(tab_id, text=f"{title}  ")
+        
+        if tab_id == self.current_tab_id:
+            self.root.title(title)
+
+    def on_text_modified(self, event):
+        for tab_id, tab in self.tabs.items():
+            if tab['text_area'] == event.widget:
+                is_mod = tab['text_area'].edit_modified()
+                if tab.get('is_modified') != is_mod:
+                    tab['is_modified'] = is_mod
+                    self.update_tab_title(tab_id)
+                break
+
+    def create_tab(self, filename="", text_content=""):
+        tab_frame = ttk.Frame(self.notebook)
+        title = os.path.basename(filename) if filename else "Untitled"
+        self.notebook.add(tab_frame, text=f"{title}  ")
+        
+        text_area = TextWidget(tab_frame, undo=True, wrap='none', font=("Consolas", 11), bg="#1e1e1e", fg="#d4d4d4", insertbackground="white")
+        text_area.grid(column=1, row=0, sticky='nsew')
+        tab_frame.grid_rowconfigure(0, weight=1)
+        tab_frame.grid_columnconfigure(1, weight=1)
+        
+        scrollbar_y = AutoScrollbar(text_area, orient='vertical')
+        scrollbar_x = AutoScrollbar(text_area, orient='horizontal')
+        text_area.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        scrollbar_y.config(command=text_area.yview, cursor="sb_v_double_arrow")
+        scrollbar_x.config(command=text_area.xview, cursor="sb_h_double_arrow")
+        
+        line_count_bar = LineEnumerator(tab_frame, width=32, highlightthickness=0)
+        canvas_line = tk.Canvas(text_area, width=1, height=self.Height, highlightthickness=0, bg='lightsteelblue3')
+        
+        tab_id = str(tab_frame)
+        self.tabs[tab_id] = {
+            'frame': tab_frame,
+            'text_area': text_area,
+            'filename': filename,
+            'line_count_bar': line_count_bar,
+            'canvas_line': canvas_line,
+            'is_modified': False
+        }
+        
+        text_area.bind('<Tab>', self.tab)
+        if self.os_platform == "win32":
+            text_area.bind('<Shift-Tab>', self.shift_tab)
+        elif self.os_platform == "linux":
+            text_area.bind('<Shift-ISO_Left_Tab>', self.shift_tab)
+        text_area.bind('<ButtonRelease-3>', self.popup)
+        text_area.bind('<Control-r>', self.redo)
+        text_area.bind('<Control-z>', self.undo)
+        text_area.bind('<Control-a>', self.select_all)
+        text_area.bind('<Configure>', self.vertical_line)
+        text_area.bind('<<Modified>>', self.on_text_modified)
+        
+        if text_content:
+            text_area.insert("1.0", text_content)
+            
+        text_area.edit_modified(False)
+            
+        self.notebook.select(tab_frame)
+        self.apply_theme_to_tab(tab_id)
+        
+        if self.variable_syntax_highlight.get() != "None":
+            self.switch_syntax_highlight()
+            
+        if self.variable_line_bar_hide.get() == True:
+            line_count_bar.grid(column=0, row=0, sticky='ns')
+            line_count_bar.attach(text_area)
+            text_area.bind("<<IcursorModify>>", self.icursor_modify)
+            
+        if self.variable_statusbar_hide.get() == True:
+            text_area.event_add("<<ButtonKeyRelease>>", "<ButtonRelease>", "<KeyRelease>")
+            text_area.bind("<<ButtonKeyRelease>>", self.count_text_area)
+            
+        if self.variable_word_wrap.get() == 1:
+            text_area.configure(wrap="word")
+            
+        self.on_tab_change()
+
+    def apply_theme_to_tab(self, tab_id):
+        theme_map = {
+            0: ('#1e1e1e', '#d4d4d4', 'white', 'dark'),
+            1: ('#ffffff', '#000000', 'black', 'light'),
+            2: ('#272822', '#f8f8f2', 'white', 'dark'),
+            3: ('#002b36', '#839496', 'white', 'dark'),
+            4: ('#fdf6e3', '#657b83', 'black', 'light'),
+            5: ('#282a36', '#f8f8f2', 'white', 'dark'),
+            6: ('#2e3440', '#d8dee9', 'white', 'dark'),
+            7: ('#0d1117', '#c9d1d9', 'white', 'dark')
+        }
+        val = self.variable_theme.get()
+        if val in theme_map:
+            bg, fg, insert, _ = theme_map[val]
+            tab = self.tabs[tab_id]
+            tab['text_area'].config(bg=bg, fg=fg, insertbackground=insert)
+            if self.variable_line_bar.get() == 0:
+                tab['line_count_bar'].config(bg=bg)
+
+    def close_tab(self, event=None, index=None):
+        if index is not None:
+            try:
+                tab_id = str(self.notebook.tabs()[index])
+            except IndexError:
+                return
+        else:
+            tab_id = self.current_tab_id
+
+        if not tab_id:
+            return
+
+        tab = self.tabs.get(tab_id)
+        if tab and tab.get('is_modified', False):
+            self.notebook.select(tab_id)
+            title = os.path.basename(tab['filename']) if tab['filename'] else "Untitled"
+            response = tkMessageBox.askyesnocancel("Save Changes", f"Do you want to save changes to {title}?")
+            if response is True:
+                saved = self.save_file()
+                if not saved:
+                    return
+            elif response is None:
+                return
+
+        self.notebook.forget(tab_id)
+        if tab_id in self.tabs:
+            del self.tabs[tab_id]
+        if not self.tabs:
+            self.create_tab()
+
+    def on_tab_change(self, event=None):
+        if self.current_tab:
+            self.count_text_area()
+            self.root.title(os.path.basename(self.filename) if self.filename else "Untitled")
+            self.update_tab_title(self.current_tab_id)
+
+    def on_notebook_focus(self, event):
+        """Set focus to the text area when the notebook is focused."""
+        if self.text_area:
+            self.text_area.focus_set()
 
     def search_box(self, event=None):
         """Make Search box appear inside text area"""
         if self.variable_search_box.get() == True:
-            self.search_box_label.pack_forget()
+            self.search_box_label.place_forget()
             self.variable_search_box.set(False)
             self.search_entry.unbind('<Return>')
         elif self.variable_search_box.get() == False:
-            self.search_box_label.pack(side=tk.TOP, anchor=tk.NE)
+            self.search_box_label.place(relx=1.0, rely=0.0, anchor="ne")
             self.variable_search_box.set(True)
             self.search_entry.focus_set()
             self.search_entry.bind('<Return>', self.find_match)
@@ -389,78 +553,102 @@ class Notepad:
     
     def new_file(self, event=None):
         """Clear text area."""
-        self.root.title(self.filename)
-        self.filename = ''
-        self.text_area.delete(0.0, tk.END)
-        if self.variable_syntax_highlight.get() != "None":
-            self.switch_syntax_highlight()
+        self.create_tab()
         
     def open_file(self, event=None):
         try:
-            self.filename = tkFileDialog.askopenfilename(
+            filename = tkFileDialog.askopenfilename(
                 defaultextension=".txt", filetypes=self.file_options)
-            if self.filename:
-                with open(self.filename, 'r', encoding='utf-8') as data:
-                        self.root.title(os.path.basename(self.filename))
-                        self.text_area.delete(0.0, tk.END)
-                        self.text_area.insert(0.0, data.read())
-                        if self.variable_syntax_highlight.get() != "None":
-                            self.switch_syntax_highlight()
+            if filename:
+                filename = os.path.normpath(filename)
+                for tab_id, tab_info in self.tabs.items():
+                    tab_fn = tab_info.get('filename')
+                    if tab_fn and os.path.normpath(tab_fn) == filename:
+                        self.notebook.select(tab_id)
+                        return
+                
+                with open(filename, 'r', encoding='utf-8') as data:
+                    self.create_tab(filename=filename, text_content=data.read())
         except FileNotFoundError:
             return None
 
     def save_file_as(self, event=None):
         """
         Define file name, extension and save file.
-        Remove '*' symbol from file name.
         """
-        self.filename_var = self.filename
+        if not self.current_tab: return False
+        
+        tab = self.current_tab
         try:
-            self.filename = tkFileDialog.asksaveasfilename(
-                initialfile=self.root.title().strip("*"),
+            title = os.path.basename(tab['filename']) if tab['filename'] else "Untitled"
+            filename = tkFileDialog.asksaveasfilename(
+                initialfile=title,
                 defaultextension='.txt', filetypes=self.file_options)
-            if self.filename == '':
-                self.filename = self.filename_var
-            else:
-                with open(self.filename, 'w', encoding='utf-8') as data:
-                        data.write(self.text_area.get(1.0, tk.END))
-                        self.root.title(os.path.basename(self.filename))
+            if not filename:
+                return False
+                
+            self.filename = filename
+            with open(self.filename, 'w', encoding='utf-8') as data:
+                data.write(self.text_area.get(1.0, tk.END))
+            self.root.title(os.path.basename(self.filename))
+            self.text_area.edit_modified(False)
+            tab['is_modified'] = False
+            self.update_tab_title(self.current_tab_id)
+            return True
         except Exception as e:
-            raise e
+            print(f"Error saving file: {e}")
+            return False
                 
     def save_file(self, event=None):
         """AutoSave file if it was opened else "Save as"."""
-        if self.filename != None and self.filename != "":
-            with open(self.filename, 'w', encoding='utf-8') as note:
-                    note.write(self.text_area.get(1.0, tk.END))
-            self.root.title(os.path.basename(self.filename))
-        elif self.filename == None or self.filename =='':
-            self.save_file_as()
+        if not self.current_tab: return False
+        
+        tab = self.current_tab
+        if tab['filename']:
+            with open(tab['filename'], 'w', encoding='utf-8') as note:
+                note.write(self.text_area.get(1.0, tk.END))
+            self.root.title(os.path.basename(tab['filename']))
+            self.text_area.edit_modified(False)
+            tab['is_modified'] = False
+            self.update_tab_title(self.current_tab_id)
+            return True
         else:
-            return "Error"
+            return self.save_file_as()
 
     def quit_app(self):
-        self.save_file()
+        for tab_id in list(self.tabs.keys()):
+            tab = self.tabs.get(tab_id)
+            if tab and tab.get('is_modified', False):
+                self.notebook.select(tab_id)
+                title = os.path.basename(tab['filename']) if tab['filename'] else "Untitled"
+                response = tkMessageBox.askyesnocancel("Save Changes", f"Do you want to save changes to {title}?")
+                if response is True:
+                    saved = self.save_file()
+                    if not saved:
+                        return
+                elif response is None:
+                    return
+
         self.root.destroy()
     
     def copy(self):
-        self.text_area.event_generate("<<Copy>>")
+        if self.text_area: self.text_area.event_generate("<<Copy>>")
         
     def cut(self, event=None):
-        self.text_area.event_generate("<<Cut>>")
+        if self.text_area: self.text_area.event_generate("<<Cut>>")
         
     def paste(self, event=None):
-        self.text_area.event_generate("<<Paste>>")
+        if self.text_area: self.text_area.event_generate("<<Paste>>")
         return 'break'
         
     def undo(self, event=None):
-        self.text_area.event_generate("<<Undo>>")
+        if self.text_area: self.text_area.event_generate("<<Undo>>")
         
     def redo(self, event=None):
-        self.text_area.event_generate("<<Redo>>")
+        if self.text_area: self.text_area.event_generate("<<Redo>>")
         
     def select_all(self, event=None):
-        self.text_area.event_generate("<<SelectAll>>")
+        if self.text_area: self.text_area.event_generate("<<SelectAll>>")
     
     def about(self):
         tkMessageBox.showinfo("Notepad", "Simple but Good :)")
@@ -473,6 +661,7 @@ class Notepad:
         
     def tab(self, arg):
         """Change "TAB" button behaviour. Insert 4 spaces"""
+        if not self.text_area: return 'break'
         self.text_area.insert(tk.INSERT, " " * self.tab_width)
         return 'break'
     
@@ -481,6 +670,7 @@ class Notepad:
         Change "Shift+TAB" behaviour. Return icursor 4 spaces back.
         https://stackoverflow.com/a/43920993
         """
+        if not self.text_area: return 'break'
         # get 4 characters before icursor
         previous_characters = self.text_area.get(
             "insert -%dc" % self.tab_width, tk.INSERT)
@@ -508,12 +698,13 @@ class Notepad:
         val = self.variable_theme.get()
         if val in theme_map:
             bg, fg, insert, sv_theme = theme_map[val]
-            self.text_area.config(bg=bg, fg=fg, insertbackground=insert)
             sv_ttk.set_theme(sv_theme)
             
-            # Sync the default side bar and status bar colors to match the new overall theme
-            if self.variable_line_bar.get() == 0:
-                self.line_count_bar.config(bg=bg)
+            for tab in self.tabs.values():
+                tab['text_area'].config(bg=bg, fg=fg, insertbackground=insert)
+                if self.variable_line_bar.get() == 0:
+                    tab['line_count_bar'].config(bg=bg)
+            
             if self.variable_statusbar.get() == 0:
                 self.statusbar.config(bg="#007acc" if sv_theme == "dark" else "#005999", fg="white")
                 
@@ -522,21 +713,22 @@ class Notepad:
        
     def vertical_line(self, event=None):
         """Inseert or remove vertical marker"""
-        if self.variable_marker.get() == 0:
-            self.canvas_line.place_forget()  # Unmap widget
-        elif self.variable_marker.get() == 1:
-            self.canvas_line.place(x=640, height=self.root.winfo_height())
-        elif self.variable_marker.get() == 2:
-            self.canvas_line.place(x=960, height=self.root.winfo_height())
-        else:
-            return "Error"          
+        for tab in self.tabs.values():
+            canvas_line = tab['canvas_line']
+            if self.variable_marker.get() == 0:
+                canvas_line.place_forget()  # Unmap widget
+            elif self.variable_marker.get() == 1:
+                canvas_line.place(x=640, height=self.root.winfo_height())
+            elif self.variable_marker.get() == 2:
+                canvas_line.place(x=960, height=self.root.winfo_height())
 
-    def count_text_area(self, event):
+    def count_text_area(self, event=None):
         """
         Count line and column where cursor inserted.
         Count total amount of symbols.
         Show line, col and symb inside statusbar.
         """
+        if not self.text_area: return
         line, col = self.text_area.index("insert").split(".")
         symb_count = self.text_area.count(1.0, "end-1c", "chars")
         symb = str(symb_count[0]) if symb_count else "0"
@@ -552,22 +744,24 @@ class Notepad:
         """
         Draw line number inside line-count bar.
         """
-        self.line_count_bar.redraw()
+        if self.line_count_bar:
+            self.line_count_bar.redraw()
     
     def line_bar_color(self, event=None):
         """Change color of line-count bar"""
-        if self.variable_line_bar.get() == 0:
-            self.line_count_bar.config(bg=self.text_area.cget('bg'))
-        elif self.variable_line_bar.get() == 1:
-            self.line_count_bar.config(bg='lightsteelblue3')
-        elif self.variable_line_bar.get() == 2:
-            self.line_count_bar.config(bg='yellow')
-        elif self.variable_line_bar.get() == 3:
-            self.line_count_bar.config(bg='dodger blue')
-        elif self.variable_line_bar.get() == 4:
-            self.line_count_bar.config(bg='Indian red')
-        else:
-            return "Error"
+        for tab in self.tabs.values():
+            line_count_bar = tab['line_count_bar']
+            text_area = tab['text_area']
+            if self.variable_line_bar.get() == 0:
+                line_count_bar.config(bg=text_area.cget('bg'))
+            elif self.variable_line_bar.get() == 1:
+                line_count_bar.config(bg='lightsteelblue3')
+            elif self.variable_line_bar.get() == 2:
+                line_count_bar.config(bg='yellow')
+            elif self.variable_line_bar.get() == 3:
+                line_count_bar.config(bg='dodger blue')
+            elif self.variable_line_bar.get() == 4:
+                line_count_bar.config(bg='Indian red')
     
     def statusbar_color(self, event=None):
         """Change color of bottom status bar"""
@@ -605,19 +799,19 @@ class Notepad:
         """
         if self.variable_statusbar_hide.get() == False:
             try:
-                self.text_area.unbind("<<ButtonKeyRelea>>", 
-                    self.text_area.bind("<<ButtonKeyRelease>>", 
-                    self.count_text_area)) # Make better
-                self.text_area.event_delete("<<ButtonKeyRelea>>",
-                    "<ButtonRelease>", "<KeyRelease>")
+                for tab in self.tabs.values():
+                    try:
+                        tab['text_area'].event_delete("<<ButtonKeyRelease>>")
+                    except tk.TclError:
+                        pass
                 self.statusbar.grid_forget()
             except TypeError:
                 pass
         elif self.variable_statusbar_hide.get() == True:
-            self.text_area.event_add("<<ButtonKeyRelease>>", 
-                "<ButtonRelease>", "<KeyRelease>")
             self.statusbar.grid(column=0, columnspan=3, row=1, sticky='wes')
-            self.text_area.bind("<<ButtonKeyRelease>>", self.count_text_area)
+            for tab in self.tabs.values():
+                tab['text_area'].event_add("<<ButtonKeyRelease>>", "<ButtonRelease>", "<KeyRelease>")
+                tab['text_area'].bind("<<ButtonKeyRelease>>", self.count_text_area)
         else:
             return None
     
@@ -628,18 +822,18 @@ class Notepad:
         Undind if line_count_bar removed.
         """
         if self.variable_line_bar_hide.get() == False:
-            try:
-                self.line_count_bar.delete("all")
-                self.line_count_bar.grid_forget()
-                self.text_area.unbind("<<IcursorModify>>",
-                    self.text_area.bind("<<IcursorModify>>",
-                    self.icursor_modify))
-            except TypeError:
-                pass
+            for tab in self.tabs.values():
+                try:
+                    tab['line_count_bar'].delete("all")
+                    tab['line_count_bar'].grid_forget()
+                    tab['text_area'].unbind("<<IcursorModify>>")
+                except TypeError:
+                    pass
         elif self.variable_line_bar_hide.get() == True:
-            self.line_count_bar.grid(column=0, row=0, sticky='ns')
-            self.line_count_bar.attach(self.text_area)
-            self.text_area.bind("<<IcursorModify>>", self.icursor_modify)
+            for tab in self.tabs.values():
+                tab['line_count_bar'].grid(column=0, row=0, sticky='ns')
+                tab['line_count_bar'].attach(tab['text_area'])
+                tab['text_area'].bind("<<IcursorModify>>", self.icursor_modify)
         else:
             return None
 
@@ -673,6 +867,7 @@ class Notepad:
         self._highlight_timer = self.root.after(50, self._apply_syntax_highlight)
 
     def _apply_syntax_highlight(self):
+        if not self.text_area: return
         row = self.text_area.index("insert").split(".")[0]
 
         # Remove old syntax tags from the current line before updating
@@ -756,7 +951,7 @@ class Notepad:
         else:
             return None
 
-    def syntax_colorizer(self, data, start_index):
+    def syntax_colorizer(self, data, start_index, ta=None):
         """
         Colorize market text.
         Must be provided: 
@@ -764,6 +959,8 @@ class Notepad:
             "data" arg. - content to which range applied 
             e.g. data = text_widget.get("1.0", "end-1c").
         """
+        ta = ta or self.text_area
+        if not ta: return
         lang = self.variable_syntax_highlight.get()
         try:
             lexer = get_lexer_by_name(lang.lower())
@@ -785,15 +982,14 @@ class Notepad:
                 end_col = len(lines[-1])
 
             end_index = f"{end_row}.{end_col}"
-            self.text_area.tag_add(str(token), f"{row}.{col}", end_index)
+            ta.tag_add(str(token), f"{row}.{col}", end_index)
             row, col = end_row, end_col
 
 
     def word_wrap(self):
-        if self.variable_word_wrap.get() == 0:
-            self.text_area.configure(wrap="none")
-        else:
-            self.text_area.configure(wrap="word")
+        wrap_mode = "none" if self.variable_word_wrap.get() == 0 else "word"
+        for tab in self.tabs.values():
+            tab['text_area'].configure(wrap=wrap_mode)
 
 if __name__ == '__main__':
     notepad = Notepad()
