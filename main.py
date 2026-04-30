@@ -46,7 +46,13 @@ class Notepad:
                     ('Text Document', '*.txt')]
         
         self.tab_width = 4
-        
+
+        self.drag_start_index = None
+        self.drag_start_x = None
+        self.drag_start_y = None
+        self.drag_target_index = None
+        self.drag_threshold = 5
+
         self.variable_marker = tk.IntVar()
         self.variable_theme = tk.IntVar()
         self.variable_line_bar = tk.IntVar()
@@ -83,6 +89,10 @@ class Notepad:
         self.notebook.grid(column=0, columnspan=3, row=0, sticky='nsew')
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
         self.notebook.bind("<FocusIn>", self.on_notebook_focus)
+        self.notebook.bind("<Button-3>", self.on_tab_right_click)
+        self.notebook.bind("<Button-1>", self.on_tab_press, add=True)
+        self.notebook.bind("<B1-Motion>", self.on_tab_drag, add=True)
+        self.notebook.bind("<ButtonRelease-1>", self.on_tab_release, add=True)
         
         # Apply modern theme
         sv_ttk.set_theme("dark")
@@ -129,12 +139,12 @@ class Notepad:
             menu=self.vertical_marker_menu)
         self.customize_menu.add_cascade(label='Color theme',
             menu=self.theme_edit)
+        self.customize_menu.add_cascade(label='StatusBars',
+            menu=self.s_bars_menu)
         self.customize_menu.add_cascade(label="Line bar color",
             menu=self.line_bar_menu)
         self.customize_menu.add_cascade(label="Statusbar color",
             menu=self.statusbar_menu)
-        self.customize_menu.add_cascade(label='StatusBars',
-            menu=self.s_bars_menu)
         self.customize_menu.add_cascade(label="Word wrap",
             menu=self.word_wrap_menu)
         self.customize_menu.add_cascade(label="Highlight syntax",
@@ -302,18 +312,42 @@ class Notepad:
     def update_tab_title(self, tab_id):
         tab = self.tabs.get(tab_id)
         if not tab: return
-        
+
         filename = tab['filename']
         is_modified = tab.get('is_modified', False)
-        
+
         title = os.path.basename(filename) if filename else "Untitled"
         if is_modified:
             title += " *"
-            
-        self.notebook.tab(tab_id, text=f"{title}  ")
-        
+
+        self.notebook.tab(tab_id, text=title)
+
         if tab_id == self.current_tab_id:
             self.root.title(title)
+
+    def on_tab_right_click(self, event):
+        try:
+            index = self.notebook.index("@%d,%d" % (event.x, event.y))
+            self.notebook.select(index)
+
+            tab_menu = tk.Menu(self.root, tearoff=0)
+            tab_menu.add_command(label="Close Tab", command=lambda: self.close_tab(index=index))
+            tab_menu.add_command(label="Close Other Tabs", command=lambda: self.close_other_tabs(index))
+            tab_menu.add_command(label="Close All Tabs", command=self.close_all_tabs)
+
+            tab_menu.tk_popup(event.x_root, event.y_root)
+            return "break"
+        except tk.TclError:
+            pass
+
+    def close_other_tabs(self, keep_index):
+        tabs_to_close = [i for i in range(len(self.notebook.tabs())) if i != keep_index]
+        for i in reversed(tabs_to_close):
+            self.close_tab(index=i)
+
+    def close_all_tabs(self):
+        while len(self.notebook.tabs()) > 0:
+            self.close_tab(index=0)
 
     def on_text_modified(self, event):
         for tab_id, tab in self.tabs.items():
@@ -327,7 +361,7 @@ class Notepad:
     def create_tab(self, filename="", text_content=""):
         tab_frame = ttk.Frame(self.notebook)
         title = os.path.basename(filename) if filename else "Untitled"
-        self.notebook.add(tab_frame, text=f"{title}  ")
+        self.notebook.add(tab_frame, text=title)
         
         text_area = TextWidget(tab_frame, undo=True, wrap='none', font=("Consolas", 11), bg="#1e1e1e", fg="#d4d4d4", insertbackground="white")
         text_area.grid(column=1, row=0, sticky='nsew')
@@ -449,6 +483,101 @@ class Notepad:
         """Set focus to the text area when the notebook is focused."""
         if self.text_area:
             self.text_area.focus_set()
+
+    def on_tab_press(self, event):
+        """Handle mouse press on tab area - start drag tracking."""
+        try:
+            self.drag_start_index = self.notebook.index("@%d,%d" % (event.x, event.y))
+            self.drag_start_x = event.x
+            self.drag_start_y = event.y
+            self.drag_target_index = self.drag_start_index
+        except tk.TclError:
+            self.drag_start_index = None
+
+    def on_tab_drag(self, event):
+        """Handle mouse drag motion on tabs with animation."""
+        if self.drag_start_index is None:
+            return
+
+        dx = abs(event.x - self.drag_start_x)
+        dy = abs(event.y - self.drag_start_y)
+
+        if dx > self.drag_threshold or dy > self.drag_threshold:
+            try:
+                current_index = self.notebook.index("@%d,%d" % (event.x, event.y))
+                old_target = self.drag_target_index
+                self.drag_target_index = current_index
+                if self.drag_target_index != old_target:
+                    self.update_tab_drag_visual(self.drag_target_index)
+            except tk.TclError:
+                pass
+
+    def on_tab_release(self, event):
+        """Handle mouse release - complete tab reordering."""
+        if self.drag_start_index is None:
+            return
+
+        dx = abs(event.x - self.drag_start_x)
+        dy = abs(event.y - self.drag_start_y)
+
+        if (dx > self.drag_threshold or dy > self.drag_threshold) and self.drag_target_index != self.drag_start_index:
+            self.perform_tab_reorder(self.drag_start_index, self.drag_target_index)
+
+        self.reset_tab_visual()
+        self.drag_start_index = None
+        self.drag_target_index = None
+
+    def update_tab_drag_visual(self, target_index):
+        """Update visual feedback during drag by changing tab text."""
+        try:
+            num_tabs = len(self.notebook.tabs())
+            for i in range(num_tabs):
+                tab_id = self.notebook.tabs()[i]
+                tab_text = self.notebook.tab(tab_id, "text")
+
+                if i == self.drag_start_index:
+                    if not tab_text.endswith(" ◄"):
+                        self.notebook.tab(tab_id, text=tab_text.rstrip() + " ◄")
+                elif i == target_index:
+                    if not tab_text.endswith(" ►"):
+                        self.notebook.tab(tab_id, text=tab_text.rstrip() + " ►")
+                else:
+                    if tab_text.endswith(" ◄") or tab_text.endswith(" ►"):
+                        self.notebook.tab(tab_id, text=tab_text.rstrip()[:-2])
+        except Exception as e:
+            print(f"Error updating tab visual: {e}")
+
+    def reset_tab_visual(self):
+        """Reset all tab visual styling by removing markers."""
+        try:
+            for tab in self.notebook.tabs():
+                tab_text = self.notebook.tab(tab, "text")
+                if tab_text.endswith(" ◄") or tab_text.endswith(" ►"):
+                    self.notebook.tab(tab, text=tab_text.rstrip()[:-2])
+        except tk.TclError:
+            pass
+
+    def perform_tab_reorder(self, source_index, target_index):
+        """Perform the actual tab reordering."""
+        try:
+            tabs = list(self.notebook.tabs())
+            num_tabs = len(tabs)
+
+            if source_index < 0 or source_index >= num_tabs or target_index < 0 or target_index >= num_tabs:
+                return
+
+            source_tab_id = tabs[source_index]
+
+            self.notebook.forget(source_index)
+
+            if target_index > source_index:
+                self.notebook.insert('end', source_tab_id)
+            else:
+                self.notebook.insert(target_index, source_tab_id)
+
+            self.notebook.select(source_tab_id)
+        except Exception as e:
+            print(f"Error reordering tabs: {e}")
 
     def search_box(self, event=None):
         """Make Search box appear inside text area"""
