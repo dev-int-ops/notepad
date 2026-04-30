@@ -3,7 +3,6 @@
 <hr>
 <code>python>=3.12</code>
 <hr>
-<p><img src=https://github.com/user-attachments/assets/311aeb1a-4a41-44bf-ab4f-cc3cf9e142a8 alt="Pic" width="798" height="645" ></p>
 
 ## Installation and Setup
 

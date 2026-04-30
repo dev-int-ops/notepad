@@ -1,33 +1,40 @@
 import tkinter as tk
 
-
-class LineEnumerator(tk.Canvas):
+class LineTextWidget(tk.Text):
     """
-    Canvas class for displaying line numbers.
-    https://stackoverflow.com/a/16375233
+    A lag-free line number widget using a native Tkinter Text widget.
+    This eliminates the CPU overhead of drawing Canvas shapes.
     """
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault('width', 4)
         kwargs.setdefault('bg', '#1e1e1e')
-        tk.Canvas.__init__(self, *args, **kwargs)
+        kwargs.setdefault('fg', '#858585')
+        kwargs.setdefault('font', ("Consolas", 11))
+        kwargs.setdefault('state', 'disabled')
+        kwargs.setdefault('highlightthickness', 0)
+        kwargs.setdefault('borderwidth', 0)
+        tk.Text.__init__(self, *args, **kwargs)
         self.textwidget = None
 
     def attach(self, text_widget):
-        """Associating a text widget with main widget."""
         self.textwidget = text_widget
-
+        
     def redraw(self, *args):
-        """Redraw line numbers"""
-        self.delete("all")
+        if not self.textwidget:
+            return
 
+        self.config(state='normal')
+        self.delete("1.0", "end")
+        
+        # Get the first and last visible lines
         i = self.textwidget.index("@0,0")
-        while True :
-            try:
-                dline= self.textwidget.dlineinfo(i)
-                if dline is None: break
-                y = dline[1]
-                line_num = str(i).split(".")[0]
-                self.create_text(31,y,anchor="ne", text=line_num, 
-                                 font=("Consolas", 11), fill="#858585")
-                i = self.textwidget.index("%s+1line" % i)
-            except Exception as e:
-                raise e
+        while True:
+            dline = self.textwidget.dlineinfo(i)
+            if dline is None:
+                break
+            
+            line_num = str(i).split(".")[0]
+            self.insert("end", f"{line_num}\n")
+            i = self.textwidget.index(f"{i}+1line")
+
+        self.config(state='disabled')
